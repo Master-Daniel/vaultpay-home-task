@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title VaultPay
 /// @notice Escrow-style ERC20 payment contract.
-/// @dev Implement the TODO sections below.
 contract VaultPay is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -70,22 +69,54 @@ contract VaultPay is ReentrancyGuard {
         uint64 deadline,
         bytes32 memoHash
     ) external nonReentrant returns (uint256 paymentId) {
-        // TODO: implement
-        revert("TODO: createPayment");
+        if (recipient == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (deadline <= block.timestamp) revert InvalidDeadline();
+
+        paymentId = nextPaymentId++;
+
+        Payment storage p = payments[paymentId];
+        p.payer = msg.sender;
+        p.recipient = recipient;
+        p.amount = amount;
+        p.createdAt = uint64(block.timestamp);
+        p.deadline = deadline;
+        p.status = PaymentStatus.Created;
+        p.memoHash = memoHash;
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        emit PaymentCreated(paymentId, msg.sender, recipient, amount, deadline, memoHash);
     }
 
     /// @notice Claim an active payment.
     /// @dev Only the intended recipient should be able to claim.
     function claimPayment(uint256 paymentId) external nonReentrant {
-        // TODO: implement
-        revert("TODO: claimPayment");
+        Payment storage p = payments[paymentId];
+        if (p.status == PaymentStatus.None) revert PaymentNotFound();
+        if (p.status != PaymentStatus.Created) revert PaymentNotActive();
+        if (msg.sender != p.recipient) revert NotRecipient();
+
+        uint256 amount = p.amount;
+        p.status = PaymentStatus.Claimed;
+
+        token.safeTransfer(msg.sender, amount);
+        emit PaymentClaimed(paymentId, msg.sender, amount);
     }
 
     /// @notice Cancel an expired active payment and refund payer.
     /// @dev Only the original payer should be able to cancel after deadline.
     function cancelPayment(uint256 paymentId) external nonReentrant {
-        // TODO: implement
-        revert("TODO: cancelPayment");
+        Payment storage p = payments[paymentId];
+        if (p.status == PaymentStatus.None) revert PaymentNotFound();
+        if (p.status != PaymentStatus.Created) revert PaymentNotActive();
+        if (msg.sender != p.payer) revert NotPayer();
+        if (block.timestamp <= p.deadline) revert PaymentNotExpired();
+
+        uint256 amount = p.amount;
+        p.status = PaymentStatus.Cancelled;
+
+        token.safeTransfer(msg.sender, amount);
+        emit PaymentCancelled(paymentId, msg.sender, amount);
     }
 
     function getPayment(uint256 paymentId) external view returns (Payment memory) {
